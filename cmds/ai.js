@@ -26,7 +26,6 @@ module.exports = {
   name: "gemini",
   description: "Interact with Gemini Vision",
   usage: "gemini <prompt> or reply with image",
-  category: "ai",
   role: 1,
   author: "developer",
 
