@@ -1,117 +1,128 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const { handleMessage } = require('./handles/handle');
-const { handlePostback } = require('./handles/Postback');
-const config = require('./configure.json');
+const { handleMessage } = require('./handles/handleMessage');
+const { handlePostback } = require('./handles/handlePostback');
+const config = require('./configure.json'); // ✅ Roles and admin IDs
 
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json());
 
-const colors = {
-  blue: '\x1b[34m',
-  red: '\x1b[31m',
-  reset: '\x1b[0m'
-};
+// ✅ Serve static files
+app.use(express.static(path.join(__dirname, 'public')));
 
-const VERIFY_TOKEN = 'pagebot-v3';
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
-app.use(express.static(path.join(__dirname, 'wala')));
+const VERIFY_TOKEN = config.verifyToken || 'pagebot'; // ✅ from configure.json or fallback
+const PAGE_ACCESS_TOKEN = fs.readFileSync('token.txt', 'utf8').trim();
+const COMMANDS_PATH = path.join(__dirname, 'commands');
 
-const loadMenuCommands = async () => {
-  try {
-    const commandsDir = path.join(__dirname, 'cmds');
-    const commandFiles = fs.readdirSync(commandsDir).filter(file => file.endsWith('.js'));
-
-    const commandsList = commandFiles.map(file => {
-      const command = require(path.join(commandsDir, file));
-      return { name: command.name, description: command.description || 'No description available' };
-    });
-
-    const loadCmd = await axios.post(`https://graph.facebook.com/v21.0/me/messenger_profile?access_token=${config.pageAccessToken}`, {
-      commands: [
-        {
-          locale: "default",
-          commands: commandsList
-        }
-      ]
-    }, {
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
-
-    if (loadCmd.data.result === "success") {
-      console.log("Commands loaded!");
-    } else {
-      console.log("Failed to load commands");
-    }
-  } catch (error) {
-    console.error('Error loading commands:', error);
-  }
-};
-
-loadMenuCommands();
-
+// ✅ Webhook verification
 app.get('/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+  const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
 
   if (mode && token) {
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
       console.log('WEBHOOK_VERIFIED');
-      res.status(200).send(challenge);
-    } else {
-      res.sendStatus(403);
+      return res.status(200).send(challenge);
     }
+    return res.sendStatus(403);
   }
+
+  res.sendStatus(400);
 });
 
+// ✅ Webhook events
 app.post('/webhook', (req, res) => {
-  const body = req.body;
+  const { body } = req;
 
   if (body.object === 'page') {
-    body.entry.forEach(entry => {
-      entry.messaging.forEach(event => {
+    body.entry?.forEach(entry => {
+      entry.messaging?.forEach(event => {
         if (event.message) {
-          handleMessage(event, config.pageAccessToken);
+          handleMessage(event, PAGE_ACCESS_TOKEN);
         } else if (event.postback) {
-          handlePostback(event, config.pageAccessToken);
+          handlePostback(event, PAGE_ACCESS_TOKEN);
         }
       });
     });
 
-    res.status(200).send('EVENT_RECEIVED');
-  } else {
-    res.sendStatus(404);
+    return res.status(200).send('EVENT_RECEIVED');
+  }
+
+  res.sendStatus(404);
+});
+
+// ✅ Utility: send Messenger Profile API requests
+const sendMessengerProfileRequest = async (method, url, data = null) => {
+  try {
+    const response = await axios({
+      method,
+      url: `https://graph.facebook.com/v21.0${url}?access_token=${PAGE_ACCESS_TOKEN}`,
+      headers: { 'Content-Type': 'application/json' },
+      data
+    });
+    return response.data;
+  } catch (error) {
+    console.error(`Error in ${method} request:`, error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// ✅ Load commands dynamically (only for menu, role-checking done in handleMessage)
+const loadCommands = () => {
+  return fs.readdirSync(COMMANDS_PATH)
+    .filter(file => file.endsWith('.js'))
+    .map(file => {
+      const command = require(path.join(COMMANDS_PATH, file));
+
+      // 🔑 Only expose commands the user can see (hide admin-only if not needed in menu)
+      if (command.role === 0) {
+        return { name: `${command.name} (Admin)`, description: command.description };
+      }
+
+      return command.name && command.description
+        ? { name: command.name, description: command.description }
+        : null;
+    })
+    .filter(Boolean);
+};
+
+// ✅ Load menu commands into Messenger Profile
+const loadMenuCommands = async (isReload = false) => {
+  const commands = loadCommands();
+
+  if (isReload) {
+    await sendMessengerProfileRequest('delete', '/me/messenger_profile', { fields: ['commands'] });
+    console.log('Menu commands deleted successfully.');
+  }
+
+  await sendMessengerProfileRequest('post', '/me/messenger_profile', {
+    commands: [{ locale: 'default', commands }],
+  });
+
+  console.log('Menu commands loaded successfully.');
+};
+
+// ✅ Watch for changes in commands folder (auto reload menu)
+fs.watch(COMMANDS_PATH, (eventType, filename) => {
+  if (['change', 'rename'].includes(eventType) && filename.endsWith('.js')) {
+    loadMenuCommands(true).catch(error => {
+      console.error('Error reloading menu commands:', error);
+    });
   }
 });
 
-function logTime() {
-  const options = {
-    timeZone: 'Asia/Manila',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true
-  };
-
-  const currentTime = new Date().toLocaleString('en-PH', options);
-  const logMessage = `Current time (PH): ${currentTime}\n`;
-  console.log(logMessage);
-}
-
-logTime();
-setInterval(logTime, 60 * 60 * 1000);
-const hehe = require('./package.json');
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`${colors.red} Bot Owner: ${hehe.author}`);
+// ✅ Start server
+const PORT = process.env.PORT || config.port || 3000;
+app.listen(PORT, async () => {
+  console.log(`🚀 Server is running on port ${PORT}`);
+  try {
+    await loadMenuCommands(); // Initial load
+  } catch (error) {
+    console.error('Error loading initial menu commands:', error);
+  }
 });
-                                     
