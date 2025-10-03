@@ -17,7 +17,7 @@ app.get('/', (req, res) => {
 });
 
 const VERIFY_TOKEN = config.verifyToken || 'pagebot'; // ✅ from configure.json or fallback
-const PAGE_ACCESS_TOKEN = fs.readFileSync('token.txt', 'utf8').trim();
+const PAGE_ACCESS_TOKEN = fs.readFileSync('EAAPRDSCP47YBPoll5noyeQAb1Ll56Kp0SIbw9zRAOYW3NyvFzsRFPAmvMah61RxQPQNZA0dvi9hjTDv2uIs5sQNVf957tZBG2xuBpPI0AYuJieEPDU1zrL3JmsNBTxrATx9C3WrBCgZCRMsIfYZAPHmBe2fiX9WIVU4319ipMnMVjNPPiVUSqVVlEWxX1tTNLt7d0wZDZD', 'utf8').trim();
 const COMMANDS_PATH = path.join(__dirname, 'commands');
 
 // ✅ Webhook verification
