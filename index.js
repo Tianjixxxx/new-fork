@@ -2,8 +2,8 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const { handleMessage } = require('./handles/handleMessage');
-const { handlePostback } = require('./handles/handlePostback');
+const { handleMessage } = require('./handles/message');
+const { handlePostback } = require('./handles/Postback');
 const config = require('./configure.json'); // ✅ Roles and admin IDs
 
 const app = express();
