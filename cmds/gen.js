@@ -4,7 +4,7 @@ const { sendMessage } = require('../handles/message');
 module.exports = {
   name: 'gen',
   description: 'Generate an image based on a prompt.',
-  role: 1,
+  role: 0,
   author: 'French Clarence Mangigo',
   
   async execute(senderId, args, pageAccessToken) {
