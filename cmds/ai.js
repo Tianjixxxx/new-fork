@@ -26,7 +26,7 @@ module.exports = {
   name: "gemini",
   description: "Interact with Gemini Vision",
   usage: "gemini <prompt> or reply with image",
-  role: 1,
+  role: 0,
   author: "developer",
 
   async execute(senderId, args, pageAccessToken, event, imageUrl) {
